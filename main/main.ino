@@ -12,9 +12,10 @@
 #include "actual_creds.h"
 
 // Fonts
+#include "opensans12b.h"
 #include "opensans24b.h"
 
-GFXfont currentFont = OpenSans24B;
+GFXfont currentFont = OpenSans12B;
 uint8_t *framebuffer = NULL;
 
 // Global JSON doc to prevent dealloc, kinda stupid but rolling with it for now
@@ -76,17 +77,28 @@ void setup() {
 
   JsonObject json = fetchJson(client, api_ip);
 
-  const char *temperature = json["weather"]["temperature"];
+  const char *weather_temperature = json["weather"]["temperature"];
+  const char *weather_humidity = json["weather"]["humidity"];
 
-  draw_string(cursor_x, cursor_y + 50, "Outside Temperature: " + String(temperature));
+  draw_string(cursor_x, cursor_y + 50, "Outside: " + String(weather_temperature) + " (" + String(weather_humidity) + ")");
 
-  JsonArray insideTemps = json["temperatures"];
+  JsonArray rooms = json["rooms"];
 
-  for (int i = 0; i < insideTemps.size(); i++) {
-    JsonObject temp = insideTemps[i];
-    String name = temp["name"];
-    String value = temp["value"];
-    draw_string(cursor_x, cursor_y + (50 * (i + 2)), name + ": " + value);
+  for (int i = 0; i < rooms.size(); i++) {
+    JsonObject room = rooms[i];
+    String name = room["name"];
+    String temperature = room["temperature"];
+    String humidity = room["humidity"];
+    draw_string(cursor_x, cursor_y + (50 * (i + 2)), name + ": " + String(temperature) + " (" + String(humidity) + ")");
+  }
+
+  JsonArray calendarEvents = json["calendarEvents"];
+
+  for (int i = 0; i < calendarEvents.size(); i++) {
+    JsonObject event = calendarEvents[i];
+    String title = event["title"];
+    String start = event["start"];
+    draw_string(cursor_x, cursor_y + (50 * (i + 6)), title + ": " + start);
   }
 
   epd_update();

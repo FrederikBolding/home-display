@@ -7,6 +7,7 @@ const {
   HOME_ASSISTANT_TOKEN,
   CALENDAR_ID,
   TEMP_SENSORS,
+  HUMIDITY_SENSORS,
   LONGITUDE,
   LATITUDE,
 } = process.env;
@@ -27,14 +28,22 @@ async function fetchHomeAssistant(path) {
 
 async function fetchWeather() {
   const weather = await fetchJson(
-    `https://api.open-meteo.com/v1/dwd-icon?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m&timezone=auto`
+    `https://api.open-meteo.com/v1/metno?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,relative_humidity_2m,apparent_temperature&timezone=auto`
   );
 
   const temperature =
     Math.round(weather.current["temperature_2m"]) +
     weather.current_units["temperature_2m"];
 
-  return { temperature };
+  const humidity =
+    weather.current["relative_humidity_2m"] +
+    weather.current_units["relative_humidity_2m"];
+
+  const feelsLike =
+    Math.round(weather.current["apparent_temperature"]) +
+    weather.current_units["apparent_temperature"];
+
+  return { temperature, humidity, feelsLike };
 }
 
 async function fetchCalendarEvents() {
@@ -59,17 +68,33 @@ async function fetchEntityState(id) {
   return fetchHomeAssistant(`states/${id}`);
 }
 
-async function fetchTemperatures() {
+async function fetchRoomSensors() {
+  const temperatureSensors = TEMP_SENSORS.split(",");
+  const humiditySensors = HUMIDITY_SENSORS.split(",");
+  const sensors = temperatureSensors.concat(humiditySensors);
+
   const entityStates = await Promise.all(
-    TEMP_SENSORS.split(",").map((id) => fetchEntityState(id))
+    sensors.map((id) => fetchEntityState(id))
   );
 
-  return entityStates.map((entityState) => ({
+  const parsed = entityStates.map((entityState) => ({
     name: entityState.attributes.friendly_name,
     value:
       parseFloat(entityState.state, 10).toFixed(1) +
       entityState.attributes.unit_of_measurement,
   }));
+
+  const rooms = parsed
+    .slice(0, temperatureSensors.length)
+    .map((state) => state.name.split(" ")[0]);
+
+  return rooms.map((name, index) => {
+    const temperature = parsed[index].value;
+
+    const humidity = parsed[index + temperatureSensors.length].value;
+
+    return { name, temperature, humidity };
+  });
 }
 
 async function requestHandler(request, response) {
@@ -78,9 +103,14 @@ async function requestHandler(request, response) {
 
     const calendarEvents = await fetchCalendarEvents();
 
-    const temperatures = await fetchTemperatures();
+    const rooms = await fetchRoomSensors();
 
-    response.send({ weather, calendarEvents, temperatures });
+    response.send({
+      now: new Date().toISOString(),
+      weather,
+      calendarEvents,
+      rooms,
+    });
   } catch (error) {
     console.error(error);
     response.status(500).send("Internal Server Error");
