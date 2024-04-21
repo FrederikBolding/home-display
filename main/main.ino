@@ -63,24 +63,21 @@ void setup() {
 
   epd_poweron();
 
-
-  String text = "Home";
-
-  int cursor_x = 20;
-  int cursor_y = 50;
-
-  draw_string(cursor_x, cursor_y, text);
-
-  //get_text_bounds(&currentFont, data, &xx, &yy, &x1, &y1, &w, &h, NULL);
-
   WiFiClient client;
 
   JsonObject json = fetchJson(client, api_ip);
 
+  const char *date = json["now"];
+
+  int cursor_x = 10;
+  int cursor_y = 40;
+
+  draw_string(cursor_x, cursor_y, String(date));
+
   const char *weather_temperature = json["weather"]["temperature"];
   const char *weather_humidity = json["weather"]["humidity"];
 
-  draw_string(cursor_x, cursor_y + 50, "Outside: " + String(weather_temperature) + " (" + String(weather_humidity) + ")");
+  draw_string(cursor_x, cursor_y + 40, "Outside: " + String(weather_temperature) + " (" + String(weather_humidity) + ")");
 
   JsonArray rooms = json["rooms"];
 
@@ -89,7 +86,7 @@ void setup() {
     String name = room["name"];
     String temperature = room["temperature"];
     String humidity = room["humidity"];
-    draw_string(cursor_x, cursor_y + (50 * (i + 2)), name + ": " + String(temperature) + " (" + String(humidity) + ")");
+    draw_string(cursor_x, cursor_y + (40 * (i + 2)), name + ": " + String(temperature) + " (" + String(humidity) + ")");
   }
 
   JsonArray calendarEvents = json["calendarEvents"];
@@ -98,7 +95,7 @@ void setup() {
     JsonObject event = calendarEvents[i];
     String title = event["title"];
     String start = event["start"];
-    draw_string(cursor_x, cursor_y + (50 * (i + 6)), title + ": " + start);
+    draw_string(cursor_x, cursor_y + (40 * (i + 6)), title + ": " + start);
   }
 
   epd_update();

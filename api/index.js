@@ -10,6 +10,7 @@ const {
   HUMIDITY_SENSORS,
   LONGITUDE,
   LATITUDE,
+  LOCALE,
 } = process.env;
 
 async function fetchJson(url, headers = {}) {
@@ -106,7 +107,12 @@ async function requestHandler(request, response) {
     const rooms = await fetchRoomSensors();
 
     response.send({
-      now: new Date().toISOString(),
+      now: new Date().toLocaleDateString(LOCALE, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
       weather,
       calendarEvents,
       rooms,
