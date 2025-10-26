@@ -1,6 +1,11 @@
 const express = require("express");
+const { chromium } = require("playwright");
+const sharp = require("sharp");
 const app = express();
 require("dotenv").config();
+
+const EPD_WIDTH = 960;
+const EPD_HEIGHT = 540;
 
 const {
   HOME_ASSISTANT_API,
@@ -23,7 +28,7 @@ async function fetchJson(url, headers = {}) {
 
 async function fetchHomeAssistant(path) {
   return fetchJson(`${HOME_ASSISTANT_API}/${path}`, {
-    authorization: HOME_ASSISTANT_TOKEN,
+    authorization: `Bearer ${HOME_ASSISTANT_TOKEN}`,
   });
 }
 
@@ -100,11 +105,11 @@ async function fetchRoomSensors() {
 
 async function requestHandler(request, response) {
   try {
-    const weather = await fetchWeather();
-
-    const calendarEvents = await fetchCalendarEvents();
-
-    const rooms = await fetchRoomSensors();
+    const [weather, calendarEvents, rooms] = await Promise.all([
+      fetchWeather(),
+      fetchCalendarEvents(),
+      fetchRoomSensors(),
+    ]);
 
     response.send({
       now: new Date().toLocaleDateString(LOCALE, {
@@ -124,6 +129,34 @@ async function requestHandler(request, response) {
 }
 
 app.get("/", requestHandler);
+
+async function imageHandler(request, response) {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({
+    viewport: { height: EPD_HEIGHT, width: EPD_WIDTH },
+  });
+  await page.goto("http://localhost:3000");
+
+  const pngBuffer = await page.screenshot();
+
+  const eightBitBuffer = await sharp(pngBuffer)
+    //.resize(EPD_WIDTH, EPD_HEIGHT, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+
+  // Convert to 4-bit greyscale
+  const buffer = Buffer.alloc((EPD_WIDTH * EPD_HEIGHT) / 2);
+  for (let i = 0; i < EPD_WIDTH * EPD_HEIGHT; i += 2) {
+    const hi = Math.floor(eightBitBuffer[i] / 16);
+    const lo = Math.floor(eightBitBuffer[i + 1] / 16);
+    buffer[i >> 1] = (hi << 4) | lo;
+  }
+
+  response.send(buffer);
+}
+
+app.get("/image", imageHandler);
 
 app.listen(3000);
 

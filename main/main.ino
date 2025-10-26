@@ -7,26 +7,15 @@
 #include "utilities.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 
 #include "actual_creds.h"
 
-// Fonts
-#include "opensans12b.h"
-#include "opensans24b.h"
-
-GFXfont currentFont = OpenSans12B;
 uint8_t *framebuffer = NULL;
-
-// Global JSON doc to prevent dealloc, kinda stupid but rolling with it for now
-DynamicJsonDocument doc(64 * 1024);
 
 uint8_t startWifi() {
   Serial.println("\r\nConnecting to: " + String(ssid));
-  IPAddress dns(8, 8, 8, 8);  // Use Google DNS
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);  // switch off AP
-  WiFi.setAutoConnect(true);
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -62,81 +51,42 @@ void setup() {
   epd_poweroff();
 
   epd_poweron();
-
-  WiFiClient client;
-
-  JsonObject json = fetchJson(client, api_ip);
-
-  const char *date = json["now"];
-
-  int cursor_x = 10;
-  int cursor_y = 40;
-
-  draw_string(cursor_x, cursor_y, String(date));
-
-  const char *weather_temperature = json["weather"]["temperature"];
-  const char *weather_humidity = json["weather"]["humidity"];
-
-  draw_string(cursor_x, cursor_y + 40, "Outside: " + String(weather_temperature) + " (" + String(weather_humidity) + ")");
-
-  JsonArray rooms = json["rooms"];
-
-  for (int i = 0; i < rooms.size(); i++) {
-    JsonObject room = rooms[i];
-    String name = room["name"];
-    String temperature = room["temperature"];
-    String humidity = room["humidity"];
-    draw_string(cursor_x, cursor_y + (40 * (i + 2)), name + ": " + String(temperature) + " (" + String(humidity) + ")");
-  }
-
-  JsonArray calendarEvents = json["calendarEvents"];
-
-  for (int i = 0; i < calendarEvents.size(); i++) {
-    JsonObject event = calendarEvents[i];
-    String title = event["title"];
-    String start = event["start"];
-    draw_string(cursor_x, cursor_y + (40 * (i + 6)), title + ": " + start);
-  }
-
-  epd_update();
 }
 
-JsonObject fetchJson(WiFiClient &client, String ip) {
+bool fetch_image(WiFiClient &client, String ip) {
   // Terminate other request?
   client.stop();
 
   HTTPClient http;
 
   // Assume HTTP for now
-  http.begin(client, ip, 3000);
+  http.begin(client, ip, 3000, "/image");
 
   int httpCode = http.GET();
 
   if (httpCode != HTTP_CODE_OK) {
     // Fail?
     Serial.println("HTTP request failed, returned" + String(httpCode));
+    return false;
   }
 
-  String jsonString = http.getString();
+  WiFiClient *stream = http.getStreamPtr();
 
-  Serial.println(jsonString);
+  size_t size = EPD_WIDTH * EPD_HEIGHT / 2;
+  size_t index = 0;
 
-  doc.clear();
-  DeserializationError error = deserializeJson(doc, jsonString);
-  if (error) {
-    // Fail?
-    Serial.println(error.c_str());
+  while (http.connected() && index < size) {
+    if (stream->available()) {
+      framebuffer[index++] = stream->read();
+    } else {
+      delay(1);
+    }
   }
 
   client.stop();
   http.end();
 
-  return doc.as<JsonObject>();
-}
-
-void draw_string(int x, int y, String text) {
-  char *data = const_cast<char *>(text.c_str());
-  write_string(&currentFont, data, &x, &y, framebuffer);
+  return true;
 }
 
 void epd_update() {
@@ -144,5 +94,13 @@ void epd_update() {
 }
 
 void loop() {
-  // no-op
+  WiFiClient client;
+
+  bool result = fetch_image(client, api_ip);
+
+  if (result) {
+    epd_update();
+  }
+
+  delay(10000);
 }
